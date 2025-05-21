@@ -7,15 +7,20 @@ services:
     ## Enable the following line if you already use AP_EXECUTION_MODE with SANDBOXED or old activepieces, checking the breaking change documentation for more info.
     ## privileged: true
     ports:
-      - '8080:80'
+      - '8090:80'
     depends_on:
       - postgres
       - redis
     env_file: .env
     volumes:
       - ./cache:/usr/src/app/cache
+      - /srv/informes:/files:ro   # ← AÑADE ESTA LÍNEA
     networks:
-      - activepieces
+      - apnet
+    environment:
+      - AP_SANDBOX_DISABLE_NETWORK_ISOLATION=true   # ← añade esto
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
   postgres:
     image: 'postgres:14.4'
     container_name: postgres
@@ -27,7 +32,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - activepieces
+      - apnet
   redis:
     image: 'redis:7.0.7'
     container_name: redis
@@ -35,9 +40,31 @@ services:
     volumes:
       - 'redis_data:/data'
     networks:
-      - activepieces
+      - apnet
+
+  # ─────────────────────── Servidor SFTP (contenedor) ───────────────
+  sftp:                                  # ⬅︎ NUEVO
+    image: atmoz/sftp:alpine
+    command: sftpuser:password:1001      # usuario:contraseña:UID
+    ports:
+      - "2222:22"                        # Windows subirá a 2222
+    volumes:
+      - /srv/informes:/home/sftpuser/upload
+    restart: unless-stopped
+    networks: [apnet]
+
+  # ─────────────────────── nginx estático interno ───────────────────
+  nginx:                                 # ⬅︎ NUEVO
+    image: nginx:alpine
+    ports:
+      - "8080:8080"                      # sólo accesible desde host/docker
+    volumes:
+      - /srv/informes:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro   # ver paso ❷
+    restart: unless-stopped
+    networks: [apnet]
 volumes:
   postgres_data:
   redis_data:
 networks:
-  activepieces:
+  apnet:

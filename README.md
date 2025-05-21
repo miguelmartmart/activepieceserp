@@ -413,3 +413,188 @@ Not into coding but still interested in contributing? Come join our [Discord](ht
 
 This project follows the [all-contributors](https://allcontributors.org) specification.
 Contributions of any kind are welcome!
+
+
+
+
+
+
+Orden cronológico completo, desde el arranque de los contenedores hasta la llegada de la respuesta rimada del modelo Qwen2.5-coder-14b-instruct dentro de ActivePieces.
+
+1. Preparar LM Studio (el LLM)
+Ajuste	Valor
+Modelo cargado	Qwen2.5-coder-14b-instruct (GGUF)
+Port	1234
+Enable CORS	Activado
+Serve on Local Network	Activado
+(para que los contenedores Docker vean el puerto)
+(Opcional) Just-in-Time loading	On
+
+La interfaz muestra entonces:
+
+Reachable at → http://172.21.32.1:1234
+
+2. docker-compose.yml para ActivePieces + extras
+yaml
+Copiar
+Editar
+version: "3.0"
+
+services:
+  activepieces:
+    image: ghcr.io/activepieces/activepieces:0.55.0
+    container_name: activepieces
+    ports: [ "8090:80" ]
+    depends_on: [ postgres, redis ]
+    env_file: .env
+    volumes:
+      - ./cache:/usr/src/app/cache
+      - /srv/informes:/files:ro             # ficheros externos (.xlsx)
+    networks: [ apnet ]
+    environment:
+      - AP_EXECUTION_MODE=UNSANDBOXED
+      - AP_SANDBOX_DISABLE_NETWORK_ISOLATION=true
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # puente host ↔ contenedor
+
+  postgres:
+    image: postgres:14.4
+    volumes: [ postgres_data:/var/lib/postgresql/data ]
+    environment: *usa variables .env*
+    networks: [ apnet ]
+
+  redis:
+    image: redis:7.0.7
+    volumes: [ redis_data:/data ]
+    networks: [ apnet ]
+
+  # nginx estático para servir los .xlsx vía HTTP interno
+  nginx:
+    image: nginx:alpine
+    ports: [ "8080:8080" ]
+    volumes:
+      - /srv/informes:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [ apnet ]
+
+networks: { apnet: {} }
+volumes:  { postgres_data: {}, redis_data: {} }
+Claves:
+
+UNSANDBOXED + AP_SANDBOX_DISABLE_NETWORK_ISOLATION=true → el flow puede llamar a URLs externas.
+
+extra_hosts resuelve host.docker.internal dentro de los contenedores.
+
+3. Flujo en ActivePieces
+Paso 1 – Schedule/Cron
+Dispara el flujo cuando quieras.
+
+Paso 2 – Custom Javascript Code
+ts
+Copiar
+Editar
+import * as XLSX from 'xlsx';
+import { Buffer } from 'buffer';
+
+export const code = async (inputs) => {
+  // inputs.httpbody llega sin procesar (binario <string>)
+  const bin  = Buffer.from(inputs.httpbody, 'binary');
+  const wb   = XLSX.read(bin, { type: 'buffer' });
+  const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
+               header: 1,      // filas como arrays
+               defval: ''      // evita undefined
+             });
+
+  // pequeñas transformaciones → prompt
+  const prompt = json.map(r => r.join(' | ')).join('\n');
+
+  return {
+    table : json,
+    prompt: prompt               // será el mensaje para el LLM
+  };
+};
+Entrada: cuerpo binario del Send HTTP request (que hiciste pruebas al principio).
+Salida:
+
+lua
+Copiar
+Editar
+steps.custom_javascript.output.prompt   (string)
+steps.custom_javascript.output.table    (array)
+Paso 3 – Custom API Call (pieza “LocalAI – Custom API”)
+Campo	Valor
+Connection	Nuevo / Reconnect → http://172.21.32.1:1234
+Method	POST
+Headers	Content-Type : application/json
+Body	```json
+{	
+
+json
+Copiar
+Editar
+"model": "qwen2.5-coder-14b-instruct",
+"messages": [
+  { "role": "system",
+    "content": "Always answer in rhymes. Today is Thursday" },
+  { "role": "user",
+    "content": "{{steps.custom_javascript.output.prompt}}" }
+],
+"temperature": 0.7,
+"max_tokens": 128,
+"stream": false
+}
+
+|
+Copiar
+Editar
+
+(El **icono f(x)** inserta la referencia `{{…}}`).  
+Con esto, al generar “Sample Data” se ve el prompt real y, al testear, llega la respuesta rimada.
+
+---
+
+### 4.  Pruebas de red desde el contenedor (por qué antes fallaba)
+
+1. En versiones Debian slim la imagen de *activepieces* no trae `ping`/`nc`.  
+ ```bash
+ apt-get update && apt-get install -y iputils-ping netcat
+Verificar:
+
+bash
+Copiar
+Editar
+curl -m 5 http://host.docker.internal:1234/v1/models
+# o la IP:
+curl -m 5 http://172.21.32.1:1234/v1/models
+Con la bandera Serve on Local Network activada en LM Studio, responde.
+
+5. Flujo completo al ejecutarse
+scss
+Copiar
+Editar
+┌─ Cron           (dispara)
+├─ HTTP request   (descarga http://nginx:8080/hojacalc1.xlsx)
+├─ Custom JS      (convierte binario → JSON → prompt)
+└─ Custom API     (envía prompt a LM Studio → obtiene respuesta rimada)
+La salida final (ejemplo):
+
+vbnet
+Copiar
+Editar
+It's Thursday, a fine day to start,
+With data in rows, all tidy and smart.
+                        – LLM
+¡Y listo! Con estos pasos ya tienes:
+
+ActivePieces accediendo a tu Excel local,
+
+formateando los datos,
+
+y “hablando” con tu modelo Qwen2.5 vía API sin sandbox.
+
+
+
+
+
+
+
