@@ -14,11 +14,11 @@ services:
     env_file: .env
     volumes:
       - ./cache:/usr/src/app/cache
-      - /srv/informes:/files:ro   # ← AÑADE ESTA LÍNEA
+      - /srv/informes:/files:rw   # ← compartir carpeta para sftp. Lectura y escritura
     networks:
       - apnet
     environment:
-      - AP_SANDBOX_DISABLE_NETWORK_ISOLATION=true   # ← añade esto
+      - AP_SANDBOX_DISABLE_NETWORK_ISOLATION=true   # ← para conectividad con otros servidores  
     extra_hosts:
       - "host.docker.internal:host-gateway"
   postgres:

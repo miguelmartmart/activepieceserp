@@ -435,9 +435,7 @@ La interfaz muestra entonces:
 Reachable at → http://172.21.32.1:1234
 
 2. docker-compose.yml para ActivePieces + extras
-yaml
-Copiar
-Editar
+
 version: "3.0"
 
 services:
@@ -490,9 +488,7 @@ Paso 1 – Schedule/Cron
 Dispara el flujo cuando quieras.
 
 Paso 2 – Custom Javascript Code
-ts
-Copiar
-Editar
+
 import * as XLSX from 'xlsx';
 import { Buffer } from 'buffer';
 
@@ -516,9 +512,6 @@ export const code = async (inputs) => {
 Entrada: cuerpo binario del Send HTTP request (que hiciste pruebas al principio).
 Salida:
 
-lua
-Copiar
-Editar
 steps.custom_javascript.output.prompt   (string)
 steps.custom_javascript.output.table    (array)
 Paso 3 – Custom API Call (pieza “LocalAI – Custom API”)
@@ -529,9 +522,7 @@ Headers	Content-Type : application/json
 Body	```json
 {	
 
-json
-Copiar
-Editar
+
 "model": "qwen2.5-coder-14b-instruct",
 "messages": [
   { "role": "system",
@@ -545,8 +536,7 @@ Editar
 }
 
 |
-Copiar
-Editar
+
 
 (El **icono f(x)** inserta la referencia `{{…}}`).  
 Con esto, al generar “Sample Data” se ve el prompt real y, al testear, llega la respuesta rimada.
@@ -560,27 +550,19 @@ Con esto, al generar “Sample Data” se ve el prompt real y, al testear, llega
  apt-get update && apt-get install -y iputils-ping netcat
 Verificar:
 
-bash
-Copiar
-Editar
 curl -m 5 http://host.docker.internal:1234/v1/models
 # o la IP:
 curl -m 5 http://172.21.32.1:1234/v1/models
 Con la bandera Serve on Local Network activada en LM Studio, responde.
 
 5. Flujo completo al ejecutarse
-scss
-Copiar
-Editar
+
 ┌─ Cron           (dispara)
 ├─ HTTP request   (descarga http://nginx:8080/hojacalc1.xlsx)
 ├─ Custom JS      (convierte binario → JSON → prompt)
 └─ Custom API     (envía prompt a LM Studio → obtiene respuesta rimada)
 La salida final (ejemplo):
 
-vbnet
-Copiar
-Editar
 It's Thursday, a fine day to start,
 With data in rows, all tidy and smart.
                         – LLM
